@@ -3,6 +3,8 @@ name = "scryfall-mcp"
 version = "0.1.0"
 description = "MCP server for Magic: The Gathering card data from the Scryfall API"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "sjtan2302", email = "51075721+sjtan2302@users.noreply.github.com" }
 ]

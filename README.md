@@ -21,11 +21,17 @@ Results are trimmed to the fields a model reasons about. A raw Scryfall card obj
 
 ## Install
 
-Requires [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/), which also installs the right Python version for you.
 
 ```bash
-cd /path/to/scryfall-mcp && uv sync
+git clone https://github.com/sjtan2302/scryfall-mcp.git
 ```
+
+```bash
+cd scryfall-mcp && uv sync
+```
+
+Then register it with your MCP client. In the examples below, replace `/path/to/scryfall-mcp` with the full path of the folder you just cloned (run `pwd` inside it).
 
 **Claude Code**
 
@@ -86,5 +92,9 @@ Known limits:
 
 - Decklist prices use Scryfall's default printing of each card, which is not always the cheapest one.
 - `analyze_decklist` checks each card's legality but not deck size or copy limits.
+
+## License
+
+[MIT](LICENSE). That covers this code only; card data and images belong to their owners and are subject to Scryfall's terms.
 
 This project is not affiliated with Scryfall or Wizards of the Coast. Card data and prices come from Scryfall; per their terms, don't put that data behind a paywall.
