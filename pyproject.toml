@@ -1,0 +1,25 @@
+[project]
+name = "scryfall-mcp"
+version = "0.1.0"
+description = "MCP server for Magic: The Gathering card data from the Scryfall API"
+readme = "README.md"
+authors = [
+    { name = "sjtan2302", email = "51075721+sjtan2302@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp[cli]>=2.3.0",
+]
+
+[project.scripts]
+scryfall-mcp = "scryfall_mcp:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
