@@ -67,7 +67,25 @@ def _money(value: float | None) -> str:
     return f"${value:,.2f}" if value is not None else "no price"
 
 
-def format_summary(card: Card, *, include_text: bool = True) -> str:
+IMAGE_SIZES = ("small", "normal", "large")
+
+
+def image_urls(card: Card, size: str = "normal") -> list[tuple[str, str]]:
+    """(face name, image URL) for each side of the card that has its own image.
+
+    Transform and modal double-faced cards carry one image per face; everything
+    else, split cards included, has a single image for the whole card.
+    """
+    if card.get("image_uris", {}).get(size):
+        return [(card.get("name", "?"), card["image_uris"][size])]
+    return [
+        (face.get("name", "?"), face["image_uris"][size])
+        for face in card.get("card_faces") or []
+        if face.get("image_uris", {}).get(size)
+    ]
+
+
+def format_summary(card: Card, *, include_text: bool = True, include_image: bool = False) -> str:
     """One card in a line or two, for search results."""
     card_faces = faces(card)
     if len(card_faces) == 1:
@@ -81,14 +99,12 @@ def format_summary(card: Card, *, include_text: bool = True) -> str:
     meta = " · ".join(
         p for p in ((card.get("set") or "").upper(), card.get("rarity") or "", _money(usd_price(card))) if p
     )
-    line = f"{header} [{meta}]"
-    if not include_text:
-        return line
-    text = oracle_text(card)
-    if not text:
-        return line
-    indented = "\n".join(f"  {row}" for row in text.splitlines())
-    return f"{line}\n{indented}"
+    rows = [f"{header} [{meta}]"]
+    if include_text:
+        rows.extend(f"  {row}" for row in oracle_text(card).splitlines())
+    if include_image:
+        rows.extend(f"  Image: {url}" for _, url in image_urls(card))
+    return "\n".join(rows)
 
 
 def format_legalities(card: Card) -> list[str]:
@@ -158,9 +174,11 @@ def format_detail(card: Card) -> str:
 
     if card.get("scryfall_uri"):
         lines.append(f"Scryfall: {card['scryfall_uri'].split('?')[0]}")
-    image = (card.get("image_uris") or card_faces[0].get("image_uris") or {}).get("normal")
-    if image:
-        lines.append(f"Image: {image}")
+    images = image_urls(card)
+    if len(images) == 1:
+        lines.append(f"Image: {images[0][1]}")
+    else:
+        lines.extend(f"Image ({face}): {url}" for face, url in images)
     return "\n".join(lines)
 
 

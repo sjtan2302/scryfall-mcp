@@ -6,7 +6,7 @@ import functools
 from collections import Counter
 from typing import Annotated, Any, Literal
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
@@ -20,6 +20,7 @@ from .formatting import (
     format_detail,
     format_summary,
     front_face_name,
+    image_urls,
     lookup_keys,
     oracle_text,
     parse_decklist,
@@ -59,7 +60,7 @@ def _tool(title: str, *, idempotent: bool = True):
 
     def decorator(fn):
         @functools.wraps(fn)
-        async def wrapper(*args: Any, **kwargs: Any) -> str:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await fn(*args, **kwargs)
             except ScryfallError as exc:
@@ -108,6 +109,9 @@ async def search_cards(
     limit: Annotated[int, Field(ge=1, le=50, description="How many cards to return.")] = 20,
     offset: Annotated[int, Field(ge=0, description="Results to skip, for paging through long result sets.")] = 0,
     include_text: Annotated[bool, Field(description="Include each card's Oracle text.")] = True,
+    include_images: Annotated[
+        bool, Field(description="Include a link to each card's image. Use get_card_image to see a card.")
+    ] = False,
 ) -> str:
     """Search for Magic cards using Scryfall's full search syntax.
 
@@ -152,8 +156,10 @@ async def search_cards(
     lines = [header]
     lines.extend(f"Note: {w}" for w in warnings)
     lines.append("")
-    separator = "\n\n" if include_text else "\n"
-    lines.append(separator.join(format_summary(c, include_text=include_text) for c in cards))
+    separator = "\n\n" if include_text or include_images else "\n"
+    lines.append(
+        separator.join(format_summary(c, include_text=include_text, include_image=include_images) for c in cards)
+    )
     return "\n".join(lines)
 
 
@@ -168,6 +174,47 @@ async def get_card(
 ) -> str:
     """Look up one card by name: exact Oracle text, mana cost, types, prices and format legality."""
     return format_detail(await _named(name, set_code, exact))
+
+
+@_tool("Get card image")
+async def get_card_image(
+    name: Annotated[str, Field(description="Card name. Misspellings and partial names are fine.")],
+    set_code: Annotated[
+        str | None, Field(description="Optional set code (e.g. 'lea') to get that printing's artwork.")
+    ] = None,
+    size: Annotated[
+        Literal["small", "normal", "large"],
+        Field(description="Image size: small (146x204), normal (488x680) or large (672x936)."),
+    ] = "normal",
+) -> list[str | Image]:
+    """Get the picture of a card: the full card image, unaltered, as it is printed.
+
+    Returns both faces for double-faced cards. Use this when the user wants to see a card
+    or asks about its artwork; use get_card when only the text is needed.
+    """
+    card = await _named(name, set_code)
+    images = image_urls(card, size)
+    if not images:
+        raise ToolError(f"Scryfall has no image for {card.get('name', name)}.")
+
+    # The card-level credit already covers every face when it is present.
+    credits = [card.get("artist")] if card.get("artist") else [f.get("artist") for f in card.get("card_faces") or []]
+    artists = dict.fromkeys(a for a in credits if a)
+    caption = (
+        f"{card.get('name', name)} — {card.get('set_name', '?')} ({(card.get('set') or '?').upper()}) "
+        f"#{card.get('collector_number', '?')}"
+    )
+    if artists:
+        caption += f". Illustrated by {', '.join(artists)}."
+    if len(images) > 1:
+        caption += f" {len(images)} faces: {', '.join(face for face, _ in images)}."
+
+    result: list[str | Image] = [caption]
+    for _, url in images:
+        data, image_format = await scryfall.get_image(url)
+        result.append(Image(data=data, format=image_format))
+    result.append("\n".join(f"Image link: {url}" for _, url in images))
+    return result
 
 
 @_tool("Get rulings")

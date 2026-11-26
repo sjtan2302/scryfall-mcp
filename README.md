@@ -8,8 +8,9 @@ No API key is needed.
 
 | Tool | What it does |
 |---|---|
-| `search_cards` | Search with full Scryfall syntax (`c:ug t:creature mv<=3 f:modern`), sorted and paged |
+| `search_cards` | Search with full Scryfall syntax (`c:ug t:creature mv<=3 f:modern`), sorted and paged; `include_images` adds an image link per card |
 | `get_card` | One card by name (typos are fine): Oracle text, cost, prices, legality |
+| `get_card_image` | The card's picture as image content, so the model can see it; both faces of double-faced cards |
 | `get_rulings` | Official rulings for a card, for rules questions |
 | `get_printings` | A card's paper printings, cheapest first |
 | `random_card` | A random card, optionally from a search query |
@@ -51,6 +52,7 @@ claude mcp add scryfall -- uv run --directory /path/to/scryfall-mcp scryfall-mcp
 - "How does Blood Moon interact with Urza's Saga?"
 - "Here's my Commander list. What does it cost, and is anything banned?"
 - "What's the cheapest printing of Sol Ring?"
+- "Show me the Alpha printing of Shivan Dragon."
 
 ## Development
 
@@ -78,6 +80,7 @@ The client follows [Scryfall's API guidelines](https://scryfall.com/docs/api):
 - waits 100ms between requests and backs off on HTTP 429
 - caches responses in memory for an hour (prices change at most daily)
 - resolves decklists through the batch endpoint, 75 cards per request
+- returns card images whole and unaltered, with the artist credited, and only downloads them from Scryfall's own image host
 
 Known limits:
 

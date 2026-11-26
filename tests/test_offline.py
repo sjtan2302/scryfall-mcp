@@ -204,3 +204,68 @@ async def test_scryfall_errors_reach_the_model(fake_scryfall):
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+# -- images ----------------------------------------------------------------
+
+BOLT_IMAGE = "https://cards.scryfall.io/normal/front/b/o/bolt.jpg"
+DELVER_WITH_IMAGES = {
+    **DELVER,
+    "set_name": "Innistrad",
+    "collector_number": "51",
+    "card_faces": [
+        {**DELVER["card_faces"][0], "artist": "Nils Hamm",
+         "image_uris": {"normal": "https://cards.scryfall.io/normal/front/d/e/delver.jpg"}},
+        {**DELVER["card_faces"][1], "artist": "Nils Hamm",
+         "image_uris": {"normal": "https://cards.scryfall.io/normal/back/d/e/delver.jpg"}},
+    ],
+}  # fmt: skip
+
+
+def test_image_links_are_opt_in_for_search_results():
+    card = {**BOLT, "image_uris": {"normal": BOLT_IMAGE}}
+    assert BOLT_IMAGE not in format_summary(card)
+    assert f"  Image: {BOLT_IMAGE}" in format_summary(card, include_image=True)
+    assert f"Image: {BOLT_IMAGE}" in format_detail(card)
+
+
+def test_double_faced_cards_list_an_image_per_face():
+    text = format_detail(DELVER_WITH_IMAGES)
+    assert "Image (Delver of Secrets): https://cards.scryfall.io/normal/front/d/e/delver.jpg" in text
+    assert "Image (Insectile Aberration): https://cards.scryfall.io/normal/back/d/e/delver.jpg" in text
+
+
+@pytest.mark.anyio
+async def test_image_downloads_are_limited_to_scryfall():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"should not have requested {request.url}")
+
+    for url in ("https://example.com/card.jpg", "http://cards.scryfall.io/card.jpg", "https://evilscryfall.io/x.jpg"):
+        with pytest.raises(ScryfallError, match="outside Scryfall"):
+            await _client(handler).get_image(url)
+
+
+@pytest.mark.anyio
+async def test_get_card_image_returns_every_face_as_image_content(monkeypatch):
+    import base64
+
+    from mcp import Client
+
+    from scryfall_mcp import server
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "cards.scryfall.io":
+            side = b"FRONT" if "/front/" in request.url.path else b"BACK"
+            return httpx.Response(200, content=side, headers={"content-type": "image/jpeg"})
+        return httpx.Response(200, json=DELVER_WITH_IMAGES)
+
+    monkeypatch.setattr(server, "scryfall", _client(handler))
+    async with Client(server.mcp) as client:
+        result = await client.call_tool("get_card_image", {"name": "delver"})
+
+    assert not result.is_error
+    caption, front, back, links = result.content
+    assert "Illustrated by Nils Hamm" in caption.text and "2 faces" in caption.text
+    assert (front.type, front.mime_type, base64.b64decode(front.data)) == ("image", "image/jpeg", b"FRONT")
+    assert base64.b64decode(back.data) == b"BACK"
+    assert links.text.count("Image link: https://cards.scryfall.io/") == 2

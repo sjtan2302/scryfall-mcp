@@ -13,6 +13,7 @@ import anyio
 import httpx
 
 BASE_URL = "https://api.scryfall.com"
+IMAGE_HOST_SUFFIX = ".scryfall.io"
 USER_AGENT = "scryfall-mcp/0.1.0"
 
 # Scryfall asks for 50-100ms between requests (about 10 per second).
@@ -66,6 +67,25 @@ class ScryfallClient:
 
     async def post(self, path: str, body: dict[str, Any]) -> Any:
         return await self._request("POST", path, json=body)
+
+    async def get_image(self, url: str) -> tuple[bytes, str]:
+        """Download a card image. Returns the bytes and the image format ('jpeg' or 'png').
+
+        Only Scryfall's image host is allowed, so a URL can't be used to make this
+        server fetch arbitrary addresses. That host has no rate limit, so this
+        skips the delay the API calls observe.
+        """
+        parsed = httpx.URL(url)
+        if parsed.scheme != "https" or not (parsed.host or "").endswith(IMAGE_HOST_SUFFIX):
+            raise ScryfallError(f"Refusing to fetch an image from outside Scryfall: {parsed.host}")
+        try:
+            response = await self._client().get(url, headers={"Accept": "image/*"})
+        except httpx.HTTPError as exc:
+            raise ScryfallError(f"Could not download the card image: {exc!r}") from exc
+        content_type = response.headers.get("content-type", "").split(";")[0].strip()
+        if not response.is_success or not content_type.startswith("image/"):
+            raise ScryfallError(f"Scryfall returned HTTP {response.status_code} for the card image", status=response.status_code)
+        return response.content, content_type.removeprefix("image/")
 
     async def aclose(self) -> None:
         if self._http is not None:
